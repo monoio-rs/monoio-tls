@@ -11,7 +11,7 @@ repository = "https://github.com/monoio-rs/monoio-tls"
 version = "0.0.1"
 
 [dependencies]
-monoio = {version = "0.0.5", default-features = false}
+monoio = {version = "0.0.6", path = "../../monoio/monoio", default-features = false}
 rustls = {version = "0.20", default-features = false}
 thiserror = "1"
 
@@ -22,5 +22,5 @@ logging = ["rustls/logging"]
 tls12 = ["rustls/tls12"]
 
 [dev-dependencies]
-monoio = {version = "0.0.5"}
+monoio = {version = "0.0.6", path = "../../monoio/monoio"}
 webpki-roots = "0.22"

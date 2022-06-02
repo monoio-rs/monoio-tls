@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
-use monoio::{net::TcpStream, io::{AsyncWriteRentExt, AsyncReadRent}};
+use monoio::{
+    io::{AsyncReadRent, AsyncWriteRentExt},
+    net::TcpStream,
+};
 use monoio_rustls::TlsConnector;
-use rustls::{RootCertStore, OwnedTrustAnchor};
+use rustls::{OwnedTrustAnchor, RootCertStore};
 
 #[monoio::main]
 async fn main() {

@@ -1,6 +1,9 @@
 use std::io;
 
-use monoio::{buf::{IoBufMut, IoBuf}, io::{AsyncReadRent, AsyncWriteRent}};
+use monoio::{
+    buf::{IoBuf, IoBufMut},
+    io::{AsyncReadRent, AsyncWriteRent},
+};
 
 /// Used by both UnsafeRead and UnsafeWrite.
 enum Status {
@@ -31,7 +34,10 @@ pub(crate) struct UnsafeRead {
 
 impl UnsafeRead {
     /// `do_io` must be called after calling to io::Read::read.
-    pub(crate) async unsafe fn do_io<IO: AsyncReadRent>(&mut self, mut io: IO) -> io::Result<usize> {
+    pub(crate) async unsafe fn do_io<IO: AsyncReadRent>(
+        &mut self,
+        mut io: IO,
+    ) -> io::Result<usize> {
         match self.status {
             Status::WaitFill(Some((ptr, len))) => {
                 let buf = RawBuf { ptr, len };
@@ -73,7 +79,10 @@ pub(crate) struct UnsafeWrite {
 
 impl UnsafeWrite {
     /// `do_io` must be called after calling to io::Write::write.
-    pub(crate) async unsafe fn do_io<IO: AsyncWriteRent>(&mut self, mut io: IO) -> io::Result<usize> {
+    pub(crate) async unsafe fn do_io<IO: AsyncWriteRent>(
+        &mut self,
+        mut io: IO,
+    ) -> io::Result<usize> {
         match self.status {
             Status::WaitFill(Some((ptr, len))) => {
                 let buf = RawBuf { ptr, len };

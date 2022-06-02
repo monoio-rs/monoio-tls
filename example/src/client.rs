@@ -1,8 +1,11 @@
 use std::io::Cursor;
 
-use monoio::{net::TcpStream, io::{AsyncWriteRentExt, AsyncReadRentExt, AsyncWriteRent}};
+use monoio::{
+    io::{AsyncReadRentExt, AsyncWriteRent, AsyncWriteRentExt},
+    net::TcpStream,
+};
 use monoio_rustls::TlsConnector;
-use rustls::{RootCertStore, OwnedTrustAnchor, Certificate};
+use rustls::{Certificate, OwnedTrustAnchor, RootCertStore};
 use rustls_pemfile::certs;
 
 #[monoio::main]
@@ -15,7 +18,9 @@ async fn main() {
             ta.name_constraints,
         )
     }));
-    root_store.add(&read_ca_certs()).expect("unable to trust self-signed CA");
+    root_store
+        .add(&read_ca_certs())
+        .expect("unable to trust self-signed CA");
     let config = rustls::ClientConfig::builder()
         .with_safe_defaults()
         .with_root_certificates(root_store)
@@ -35,7 +40,10 @@ async fn main() {
     let buf = vec![0; data.len()];
     let (res, buf) = stream.read_exact(buf).await;
     assert!(res.is_ok(), "unable to recv data");
-    println!("recv data: {}", String::from_utf8(buf).expect("invalid data"));
+    println!(
+        "recv data: {}",
+        String::from_utf8(buf).expect("invalid data")
+    );
     let _ = stream.shutdown().await;
 }
 

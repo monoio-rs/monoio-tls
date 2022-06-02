@@ -1,19 +1,25 @@
 use std::{
+    cell::UnsafeCell,
     future::Future,
     io::{self, Read, Write},
     ops::{Deref, DerefMut},
+    rc::Rc,
 };
 
 use monoio::{
+    buf::RawBuf,
     io::{AsyncReadRent, AsyncWriteRent},
     BufResult,
 };
 use rustls::{ConnectionCommon, SideData};
 
-use crate::unsafe_io::{UnsafeRead, UnsafeWrite};
+use crate::{
+    split::{ReadHalf, WriteHalf},
+    unsafe_io::{UnsafeRead, UnsafeWrite},
+};
 
 #[derive(Debug)]
-pub(crate) struct Stream<IO, C> {
+pub struct Stream<IO, C> {
     pub(crate) io: IO,
     pub(crate) session: C,
 }
@@ -22,13 +28,23 @@ impl<IO, C> Stream<IO, C> {
     pub fn new(io: IO, session: C) -> Self {
         Self { io, session }
     }
+
+    pub fn split(self) -> (ReadHalf<IO, C>, WriteHalf<IO, C>) {
+        let shared = Rc::new(UnsafeCell::new(self));
+        (
+            ReadHalf {
+                inner: shared.clone(),
+            },
+            WriteHalf { inner: shared },
+        )
+    }
 }
 
 impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData> Stream<IO, C>
 where
     C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
 {
-    pub(crate) async fn read_io(&mut self) -> io::Result<usize> {
+    pub(crate) async fn read_io(&mut self, splitted: bool) -> io::Result<usize> {
         let mut unsafe_read = UnsafeRead::default();
 
         let n = loop {
@@ -47,9 +63,13 @@ where
         let state = match self.session.process_new_packets() {
             Ok(state) => state,
             Err(err) => {
-                // TODO(ihciah): when to write_io? If we do this in read call, the UnsafeWrite may crash
+                // When to write_io? If we do this in read call, the UnsafeWrite may crash
                 // when we impl split in an UnsafeCell way.
-                let _ = self.write_io().await;
+                // Here we choose not to do write when read.
+                // User should manually shutdown it on error.
+                if !splitted {
+                    let _ = self.write_io().await;
+                }
                 return Err(io::Error::new(io::ErrorKind::InvalidData, err));
             }
         };
@@ -93,7 +113,7 @@ where
                 wrlen += self.write_io().await?;
             }
             while !eof && self.session.wants_read() && self.session.is_handshaking() {
-                let n = self.read_io().await?;
+                let n = self.read_io(false).await?;
                 rdlen += n;
                 if n == 0 {
                     eof = true;
@@ -119,6 +139,45 @@ where
 
         Ok((rdlen, wrlen))
     }
+
+    pub(crate) async fn read_inner<T: monoio::buf::IoBufMut>(
+        &mut self,
+        mut buf: T,
+        splitted: bool,
+    ) -> BufResult<usize, T> {
+        let slice = unsafe { std::slice::from_raw_parts_mut(buf.write_ptr(), buf.bytes_total()) };
+        loop {
+            // read from rustls to buffer
+            match self.session.reader().read(slice) {
+                Ok(n) => {
+                    unsafe { buf.set_init(n) };
+                    return (Ok(n), buf);
+                }
+                // we need more data, read something.
+                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => (),
+                Err(e) => {
+                    return (Err(e), buf);
+                }
+            }
+
+            // now we need data, read something into rustls
+            match self.read_io(splitted).await {
+                Ok(0) => {
+                    return (
+                        Err(io::Error::new(
+                            io::ErrorKind::UnexpectedEof,
+                            "tls raw stream eof",
+                        )),
+                        buf,
+                    );
+                }
+                Ok(_) => (),
+                Err(e) => {
+                    return (Err(e), buf);
+                }
+            };
+        }
+    }
 }
 
 impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData> AsyncReadRent for Stream<IO, C>
@@ -133,48 +192,20 @@ where
     where
         T: 'a, Self: 'a;
 
-    fn read<T: monoio::buf::IoBufMut>(&mut self, mut buf: T) -> Self::ReadFuture<'_, T> {
-        let slice = unsafe { std::slice::from_raw_parts_mut(buf.write_ptr(), buf.bytes_total()) };
-        async move {
-            loop {
-                // read from rustls to buffer
-                match self.session.reader().read(slice) {
-                    Ok(n) => {
-                        unsafe { buf.set_init(n) };
-                        return (Ok(n), buf);
-                    }
-                    // we need more data, read something.
-                    Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => (),
-                    Err(e) => {
-                        return (Err(e), buf);
-                    }
-                }
-
-                // now we need data, read something into rustls
-                match self.read_io().await {
-                    Ok(0) => {
-                        return (
-                            Err(io::Error::new(
-                                io::ErrorKind::UnexpectedEof,
-                                "tls raw stream eof",
-                            )),
-                            buf,
-                        );
-                    }
-                    Ok(_) => (),
-                    Err(e) => {
-                        return (Err(e), buf);
-                    }
-                };
-            }
-        }
+    fn read<T: monoio::buf::IoBufMut>(&mut self, buf: T) -> Self::ReadFuture<'_, T> {
+        self.read_inner(buf, false)
     }
 
-    fn readv<T: monoio::buf::IoVecBufMut>(&mut self, buf: T) -> Self::ReadvFuture<'_, T> {
-        // TODO
+    fn readv<T: monoio::buf::IoVecBufMut>(&mut self, mut buf: T) -> Self::ReadvFuture<'_, T> {
         async move {
-            let _ = buf;
-            todo!()
+            let n = match unsafe { RawBuf::new_from_iovec_mut(&mut buf) } {
+                Some(raw_buf) => self.read(raw_buf).await.0,
+                None => Ok(0),
+            };
+            if let Ok(n) = n {
+                unsafe { buf.set_init(n) };
+            }
+            (n, buf)
         }
     }
 }
@@ -220,10 +251,14 @@ where
         }
     }
 
+    // TODO: use real writev
     fn writev<T: monoio::buf::IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
         async move {
-            let _ = buf_vec;
-            todo!()
+            let n = match unsafe { RawBuf::new_from_iovec(&buf_vec) } {
+                Some(raw_buf) => self.write(raw_buf).await.0,
+                None => Ok(0),
+            };
+            (n, buf_vec)
         }
     }
 

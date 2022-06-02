@@ -1,8 +1,11 @@
 // An echo server with tls.
 
-use std::io::{Cursor, self};
+use std::io::{self, Cursor};
 
-use monoio::{net::{TcpListener, TcpStream}, io::{AsyncReadRent, AsyncWriteRentExt}};
+use monoio::{
+    io::{AsyncReadRent, AsyncWriteRentExt},
+    net::{TcpListener, TcpStream},
+};
 use monoio_rustls::TlsAcceptor;
 use rustls::{Certificate, PrivateKey, ServerConfig};
 use rustls_pemfile::{certs, rsa_private_keys};
@@ -34,11 +37,11 @@ async fn process_raw_stream(stream: TcpStream, tls_acceptor: TlsAcceptor) -> io:
         Ok(s) => {
             println!("Handshake finished, will relay data");
             s
-        },
+        }
         Err(e) => {
             println!("Unable to do handshake: {e}");
             return Err(e.into());
-        },
+        }
     };
 
     let mut n = 0;
