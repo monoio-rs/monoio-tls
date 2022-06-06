@@ -78,6 +78,10 @@ where
     where
         T: 'a, Self: 'a;
 
+    type FlushFuture<'a> = impl Future<Output = Result<(), std::io::Error>>
+    where
+        Self: 'a;
+
     type ShutdownFuture<'a> = impl Future<Output = Result<(), std::io::Error>>
     where
         Self: 'a;
@@ -91,6 +95,11 @@ where
     fn writev<T: monoio::buf::IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
         let inner = unsafe { &mut *self.inner.get() };
         inner.writev(buf_vec)
+    }
+
+    fn flush(&mut self) -> Self::FlushFuture<'_> {
+        let inner = unsafe { &mut *self.inner.get() };
+        inner.flush()
     }
 
     fn shutdown(&mut self) -> Self::ShutdownFuture<'_> {

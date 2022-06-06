@@ -222,7 +222,11 @@ where
     where
         T: 'a, Self: 'a;
 
-    type ShutdownFuture<'a> = impl Future<Output = Result<(), std::io::Error>>
+    type FlushFuture<'a> = impl Future<Output = io::Result<()>>
+    where
+        Self: 'a;
+
+    type ShutdownFuture<'a> = impl Future<Output = io::Result<()>>
     where
         Self: 'a;
 
@@ -259,6 +263,16 @@ where
                 None => Ok(0),
             };
             (n, buf_vec)
+        }
+    }
+
+    fn flush(&mut self) -> Self::FlushFuture<'_> {
+        async move {
+            self.session.writer().flush()?;
+            while self.session.wants_write() {
+                self.write_io().await?;
+            }
+            self.io.flush().await
         }
     }
 
