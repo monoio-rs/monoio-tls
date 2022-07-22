@@ -7,7 +7,7 @@ use std::{
 };
 
 use monoio::{
-    buf::RawBuf,
+    buf::{IoBuf, IoBufMut, IoVecBuf, IoVecBufMut, RawBuf},
     io::{AsyncReadRent, AsyncWriteRent},
     BufResult,
 };
@@ -186,17 +186,17 @@ where
 {
     type ReadFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
     where
-        T: 'a, Self: 'a;
+        T: IoBufMut + 'a, Self: 'a;
 
     type ReadvFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
     where
-        T: 'a, Self: 'a;
+        T: IoVecBufMut + 'a, Self: 'a;
 
-    fn read<T: monoio::buf::IoBufMut>(&mut self, buf: T) -> Self::ReadFuture<'_, T> {
+    fn read<T: IoBufMut>(&mut self, buf: T) -> Self::ReadFuture<'_, T> {
         self.read_inner(buf, false)
     }
 
-    fn readv<T: monoio::buf::IoVecBufMut>(&mut self, mut buf: T) -> Self::ReadvFuture<'_, T> {
+    fn readv<T: IoVecBufMut>(&mut self, mut buf: T) -> Self::ReadvFuture<'_, T> {
         async move {
             let n = match unsafe { RawBuf::new_from_iovec_mut(&mut buf) } {
                 Some(raw_buf) => self.read(raw_buf).await.0,
@@ -216,11 +216,11 @@ where
 {
     type WriteFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
     where
-        T: 'a, Self: 'a;
+        T: IoBuf + 'a, Self: 'a;
 
     type WritevFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
     where
-        T: 'a, Self: 'a;
+        T: IoVecBuf + 'a, Self: 'a;
 
     type FlushFuture<'a> = impl Future<Output = io::Result<()>>
     where
@@ -230,7 +230,7 @@ where
     where
         Self: 'a;
 
-    fn write<T: monoio::buf::IoBuf>(&mut self, buf: T) -> Self::WriteFuture<'_, T> {
+    fn write<T: IoBuf>(&mut self, buf: T) -> Self::WriteFuture<'_, T> {
         async move {
             // construct slice
             let slice = unsafe { std::slice::from_raw_parts(buf.read_ptr(), buf.bytes_init()) };
@@ -256,7 +256,7 @@ where
     }
 
     // TODO: use real writev
-    fn writev<T: monoio::buf::IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
+    fn writev<T: IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
         async move {
             let n = match unsafe { RawBuf::new_from_iovec(&buf_vec) } {
                 Some(raw_buf) => self.write(raw_buf).await.0,

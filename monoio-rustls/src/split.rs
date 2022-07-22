@@ -12,7 +12,7 @@ use std::{
 };
 
 use monoio::{
-    buf::RawBuf,
+    buf::{IoBuf, IoBufMut, IoVecBuf, IoVecBufMut, RawBuf},
     io::{AsyncReadRent, AsyncWriteRent},
     BufResult,
 };
@@ -36,18 +36,18 @@ where
 {
     type ReadFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
     where
-        T: 'a, Self: 'a;
+        T: IoBufMut + 'a, Self: 'a;
 
     type ReadvFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
     where
-        T: 'a, Self: 'a;
+        T: IoVecBufMut + 'a, Self: 'a;
 
-    fn read<T: monoio::buf::IoBufMut>(&mut self, buf: T) -> Self::ReadFuture<'_, T> {
+    fn read<T: IoBufMut>(&mut self, buf: T) -> Self::ReadFuture<'_, T> {
         let inner = unsafe { &mut *self.inner.get() };
         inner.read_inner(buf, true)
     }
 
-    fn readv<T: monoio::buf::IoVecBufMut>(&mut self, mut buf: T) -> Self::ReadvFuture<'_, T> {
+    fn readv<T: IoVecBufMut>(&mut self, mut buf: T) -> Self::ReadvFuture<'_, T> {
         async move {
             (
                 match unsafe { RawBuf::new_from_iovec_mut(&mut buf) } {
@@ -72,11 +72,11 @@ where
 {
     type WriteFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
     where
-        T: 'a, Self: 'a;
+        T: IoBuf + 'a, Self: 'a;
 
     type WritevFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
     where
-        T: 'a, Self: 'a;
+        T: IoVecBuf + 'a, Self: 'a;
 
     type FlushFuture<'a> = impl Future<Output = Result<(), std::io::Error>>
     where
@@ -86,13 +86,13 @@ where
     where
         Self: 'a;
 
-    fn write<T: monoio::buf::IoBuf>(&mut self, buf: T) -> Self::WriteFuture<'_, T> {
+    fn write<T: IoBuf>(&mut self, buf: T) -> Self::WriteFuture<'_, T> {
         let inner = unsafe { &mut *self.inner.get() };
         inner.write(buf)
     }
 
     // TODO: use real writev
-    fn writev<T: monoio::buf::IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
+    fn writev<T: IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
         let inner = unsafe { &mut *self.inner.get() };
         inner.writev(buf_vec)
     }
