@@ -3,9 +3,12 @@
 
 mod client;
 mod error;
+#[cfg(not(feature = "unsafe_io"))]
+mod safe_io;
 mod server;
 mod split;
 mod stream;
+#[cfg(feature = "unsafe_io")]
 mod unsafe_io;
 
 pub use client::{

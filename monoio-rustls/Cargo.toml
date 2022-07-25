@@ -11,15 +11,19 @@ repository = "https://github.com/monoio-rs/monoio-tls"
 version = "0.0.3"
 
 [dependencies]
+bytes = {version = "1"}
 monoio = {version = "0.0.7", default-features = false, path = "../../monoio/monoio"}
 rustls = {version = "0.20", default-features = false}
-thiserror = "1"
+thiserror = {version = "1"}
 
 [features]
 dangerous_configuration = ["rustls/dangerous_configuration"]
-default = ["logging", "tls12"]
+default = ["logging", "tls12", "unsafe_io"]
 logging = ["rustls/logging"]
 tls12 = ["rustls/tls12"]
+# Once unsafe_io is enabled, you may not drop the future before it returns ready.
+# It saves one buffer copy than disabled.
+unsafe_io = []
 
 [dev-dependencies]
 monoio = {version = "0.0.7", path = "../../monoio/monoio"}

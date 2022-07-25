@@ -13,10 +13,7 @@ use monoio::{
 };
 use rustls::{ConnectionCommon, SideData};
 
-use crate::{
-    split::{ReadHalf, WriteHalf},
-    unsafe_io::{UnsafeRead, UnsafeWrite},
-};
+use crate::split::{ReadHalf, WriteHalf};
 
 #[derive(Debug)]
 pub struct Stream<IO, C> {
@@ -45,15 +42,21 @@ where
     C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
 {
     pub(crate) async fn read_io(&mut self, splitted: bool) -> io::Result<usize> {
-        let mut unsafe_read = UnsafeRead::default();
+        #[cfg(feature = "unsafe_io")]
+        let mut reader = crate::unsafe_io::UnsafeRead::default();
+        #[cfg(not(feature = "unsafe_io"))]
+        let mut reader = crate::safe_io::SafeRead::default();
 
         let n = loop {
-            match self.session.read_tls(&mut unsafe_read) {
+            match self.session.read_tls(&mut reader) {
                 Ok(n) => {
                     break n;
                 }
                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
-                    unsafe { unsafe_read.do_io(&mut self.io).await? };
+                    #[allow(unused_unsafe)]
+                    unsafe {
+                        reader.do_io(&mut self.io).await?
+                    };
                     continue;
                 }
                 Err(err) => return Err(err),
@@ -85,15 +88,21 @@ where
     }
 
     pub(crate) async fn write_io(&mut self) -> io::Result<usize> {
-        let mut unsafe_write = UnsafeWrite::default();
+        #[cfg(feature = "unsafe_io")]
+        let mut writer = crate::unsafe_io::UnsafeWrite::default();
+        #[cfg(not(feature = "unsafe_io"))]
+        let mut writer = crate::safe_io::SafeWrite::default();
 
         let n = loop {
-            match self.session.write_tls(&mut unsafe_write) {
+            match self.session.write_tls(&mut writer) {
                 Ok(n) => {
                     break n;
                 }
                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
-                    unsafe { unsafe_write.do_io(&mut self.io).await? };
+                    #[allow(unused_unsafe)]
+                    unsafe {
+                        writer.do_io(&mut self.io).await?
+                    };
                     continue;
                 }
                 Err(err) => return Err(err),
