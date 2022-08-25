@@ -35,6 +35,10 @@ impl<IO, C> Stream<IO, C> {
             WriteHalf { inner: shared },
         )
     }
+
+    pub fn into_parts(self) -> (IO, C) {
+        (self.io, self.session)
+    }
 }
 
 impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData> Stream<IO, C>
