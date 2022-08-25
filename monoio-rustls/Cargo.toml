@@ -12,7 +12,7 @@ version = "0.0.3"
 
 [dependencies]
 bytes = {version = "1"}
-monoio = {version = "0.0.7", default-features = false, path = "../../monoio/monoio"}
+monoio = {version = "0.0.7", default-features = false}
 rustls = {version = "0.20", default-features = false}
 thiserror = {version = "1"}
 
@@ -26,5 +26,5 @@ tls12 = ["rustls/tls12"]
 unsafe_io = []
 
 [dev-dependencies]
-monoio = {version = "0.0.7", path = "../../monoio/monoio"}
+monoio = "0.0.7"
 webpki-roots = "0.22"
