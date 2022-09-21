@@ -112,6 +112,9 @@ where
                 Err(err) => return Err(err),
             }
         };
+        // Flush buffered data, only needed for safe_io.
+        #[cfg(not(feature = "unsafe_io"))]
+        writer.do_io(&mut self.io).await?;
 
         Ok(n)
     }

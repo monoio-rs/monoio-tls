@@ -9,7 +9,7 @@ rustls = {version = "0.20", features = ["tls12"]}
 rustls-pemfile = "1"
 webpki-roots = "0.22"
 
-monoio-rustls = {version = "0.0.4", path = "../monoio-rustls", features = ["tls12"]}
+monoio-rustls = {version = "0.0.5", path = "../monoio-rustls", features = ["tls12"]}
 
 [[bin]]
 name = "server"

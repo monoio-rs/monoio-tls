@@ -1,19 +1,94 @@
-use std::io;
+use std::{hint::unreachable_unchecked, io};
 
-use bytes::{Buf, BufMut, BytesMut};
-use monoio::io::{AsyncReadRent, AsyncWriteRent, AsyncWriteRentExt};
+use monoio::{
+    buf::{IoBuf, IoBufMut},
+    io::{AsyncReadRent, AsyncWriteRent, AsyncWriteRentExt},
+};
 
 const BUFFER_SIZE: usize = 16 * 1024;
 
+struct Buffer {
+    read: usize,
+    write: usize,
+    buf: Box<[u8]>,
+}
+
+impl Buffer {
+    fn new() -> Self {
+        Self {
+            read: 0,
+            write: 0,
+            buf: vec![0; BUFFER_SIZE].into_boxed_slice(),
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.write - self.read
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn available(&self) -> usize {
+        self.buf.len() - self.write
+    }
+
+    fn is_full(&self) -> bool {
+        self.available() == 0
+    }
+
+    fn advance(&mut self, n: usize) {
+        assert!(self.write - self.read <= n);
+        self.read += n;
+        if self.read == self.write {
+            self.read = 0;
+            self.write = 0;
+        }
+    }
+}
+
+unsafe impl monoio::buf::IoBuf for Buffer {
+    fn read_ptr(&self) -> *const u8 {
+        unsafe { self.buf.as_ptr().add(self.read) }
+    }
+
+    fn bytes_init(&self) -> usize {
+        self.write - self.read
+    }
+}
+
+unsafe impl monoio::buf::IoBufMut for Buffer {
+    fn write_ptr(&mut self) -> *mut u8 {
+        unsafe { self.buf.as_mut_ptr().add(self.write) }
+    }
+
+    fn bytes_total(&mut self) -> usize {
+        self.buf.len() - self.write
+    }
+
+    unsafe fn set_init(&mut self, pos: usize) {
+        self.write += pos;
+    }
+}
+
 pub(crate) struct SafeRead {
     // the option is only meant for temporary take, it always should be some
-    buffer: Option<BytesMut>,
+    buffer: Option<Buffer>,
+    status: ReadStatus,
+}
+
+enum ReadStatus {
+    Eof,
+    Err(io::Error),
+    Ok,
 }
 
 impl Default for SafeRead {
     fn default() -> Self {
         Self {
-            buffer: Some(BytesMut::default()),
+            buffer: Some(Buffer::new()),
+            status: ReadStatus::Ok,
         }
     }
 }
@@ -27,11 +102,24 @@ impl SafeRead {
         }
 
         // read from raw io
-        let mut buffer = self.buffer.take().expect("buffer ownership expected");
-        buffer.reserve(BUFFER_SIZE);
+        let buffer = self.buffer.take().expect("buffer ownership expected");
         let (result, buf) = io.read(buffer).await;
         self.buffer = Some(buf);
-        result
+        match result {
+            Ok(0) => {
+                self.status = ReadStatus::Eof;
+                return result;
+            }
+            Ok(_) => {
+                self.status = ReadStatus::Ok;
+                return result;
+            }
+            Err(e) => {
+                let rerr = e.kind().into();
+                self.status = ReadStatus::Err(e);
+                return Err(rerr);
+            }
+        }
     }
 }
 
@@ -40,12 +128,19 @@ impl io::Read for SafeRead {
         // if buffer is empty, return WoundBlock.
         let buffer = self.buffer.as_mut().expect("buffer mut expected");
         if buffer.is_empty() {
+            if !matches!(self.status, ReadStatus::Ok) {
+                match std::mem::replace(&mut self.status, ReadStatus::Ok) {
+                    ReadStatus::Eof => return Ok(0),
+                    ReadStatus::Err(e) => return Err(e),
+                    ReadStatus::Ok => unsafe { unreachable_unchecked() },
+                }
+            }
             return Err(io::ErrorKind::WouldBlock.into());
         }
 
         // now buffer is not empty. copy it.
         let to_copy = buffer.len().min(buf.len());
-        unsafe { std::ptr::copy_nonoverlapping(buffer.as_ptr(), buf.as_mut_ptr(), to_copy) };
+        unsafe { std::ptr::copy_nonoverlapping(buffer.read_ptr(), buf.as_mut_ptr(), to_copy) };
         buffer.advance(to_copy);
 
         Ok(to_copy)
@@ -54,13 +149,20 @@ impl io::Read for SafeRead {
 
 pub(crate) struct SafeWrite {
     // the option is only meant for temporary take, it always should be some
-    buffer: Option<BytesMut>,
+    buffer: Option<Buffer>,
+    status: WriteStatus,
+}
+
+enum WriteStatus {
+    Err(io::Error),
+    Ok,
 }
 
 impl Default for SafeWrite {
     fn default() -> Self {
         Self {
-            buffer: Some(BytesMut::default()),
+            buffer: Some(Buffer::new()),
+            status: WriteStatus::Ok,
         }
     }
 }
@@ -77,10 +179,17 @@ impl SafeWrite {
         let buffer = self.buffer.take().expect("buffer ownership expected");
         let (result, buffer) = io.write_all(buffer).await;
         self.buffer = Some(buffer);
-        let written_len = result?;
-        unsafe { self.buffer.as_mut().unwrap_unchecked().advance(written_len) };
-
-        Ok(written_len)
+        match result {
+            Ok(written_len) => {
+                unsafe { self.buffer.as_mut().unwrap_unchecked().advance(written_len) };
+                Ok(written_len)
+            }
+            Err(e) => {
+                let rerr = e.kind().into();
+                self.status = WriteStatus::Err(e);
+                Err(rerr)
+            }
+        }
     }
 }
 
@@ -88,21 +197,31 @@ impl io::Write for SafeWrite {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // if there is too much data inside the buffer, return WoundBlock
         let buffer = self.buffer.as_mut().expect("buffer mut expected");
-        if buffer.len() >= BUFFER_SIZE {
+        if !matches!(self.status, WriteStatus::Ok) {
+            match std::mem::replace(&mut self.status, WriteStatus::Ok) {
+                WriteStatus::Err(e) => return Err(e),
+                WriteStatus::Ok => unsafe { unreachable_unchecked() },
+            }
+        }
+        if buffer.is_full() {
             return Err(io::ErrorKind::WouldBlock.into());
         }
 
-        // there is space inside the buffer, copy it.
-        let space_left = BUFFER_SIZE - buffer.len();
-        buffer.reserve(space_left);
-        let to_copy = buf.len().min(space_left);
-        unsafe { std::ptr::copy_nonoverlapping(buf.as_ptr(), buffer.as_mut_ptr(), to_copy) };
-        unsafe { buffer.advance_mut(to_copy) };
+        // there is space inside the buffer, copy to it.
+        let to_copy = buf.len().min(buffer.available());
+        unsafe { std::ptr::copy_nonoverlapping(buf.as_ptr(), buffer.write_ptr(), to_copy) };
+        unsafe { buffer.set_init(to_copy) };
         Ok(to_copy)
     }
 
     fn flush(&mut self) -> io::Result<()> {
         let buffer = self.buffer.as_mut().expect("buffer mut expected");
+        if !matches!(self.status, WriteStatus::Ok) {
+            match std::mem::replace(&mut self.status, WriteStatus::Ok) {
+                WriteStatus::Err(e) => return Err(e),
+                WriteStatus::Ok => unsafe { unreachable_unchecked() },
+            }
+        }
         if !buffer.is_empty() {
             return Err(io::ErrorKind::WouldBlock.into());
         }
