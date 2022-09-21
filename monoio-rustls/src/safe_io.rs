@@ -1,7 +1,7 @@
 use std::io;
 
 use bytes::{Buf, BufMut, BytesMut};
-use monoio::io::{AsyncReadRent, AsyncWriteRent};
+use monoio::io::{AsyncReadRent, AsyncWriteRent, AsyncWriteRentExt};
 
 const BUFFER_SIZE: usize = 16 * 1024;
 
@@ -75,7 +75,7 @@ impl SafeWrite {
 
         // buffer is not empty now. write it.
         let buffer = self.buffer.take().expect("buffer ownership expected");
-        let (result, buffer) = io.write(buffer).await;
+        let (result, buffer) = io.write_all(buffer).await;
         self.buffer = Some(buffer);
         let written_len = result?;
         unsafe { self.buffer.as_mut().unwrap_unchecked().advance(written_len) };
@@ -102,6 +102,10 @@ impl io::Write for SafeWrite {
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        let buffer = self.buffer.as_mut().expect("buffer mut expected");
+        if !buffer.is_empty() {
+            return Err(io::ErrorKind::WouldBlock.into());
+        }
         Ok(())
     }
 }
