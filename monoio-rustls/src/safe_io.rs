@@ -1,4 +1,4 @@
-use std::{hint::unreachable_unchecked, io};
+use std::{fmt::Debug, hint::unreachable_unchecked, io};
 
 use monoio::{
     buf::{IoBuf, IoBufMut},
@@ -39,7 +39,7 @@ impl Buffer {
     }
 
     fn advance(&mut self, n: usize) {
-        assert!(self.write - self.read <= n);
+        assert!(self.write - self.read >= n);
         self.read += n;
         if self.read == self.write {
             self.read = 0;
@@ -78,6 +78,15 @@ pub(crate) struct SafeRead {
     status: ReadStatus,
 }
 
+impl Debug for SafeRead {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SafeRead")
+            .field("status", &self.status)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
 enum ReadStatus {
     Eof,
     Err(io::Error),
@@ -108,16 +117,16 @@ impl SafeRead {
         match result {
             Ok(0) => {
                 self.status = ReadStatus::Eof;
-                return result;
+                result
             }
             Ok(_) => {
                 self.status = ReadStatus::Ok;
-                return result;
+                result
             }
             Err(e) => {
                 let rerr = e.kind().into();
                 self.status = ReadStatus::Err(e);
-                return Err(rerr);
+                Err(rerr)
             }
         }
     }
@@ -153,6 +162,15 @@ pub(crate) struct SafeWrite {
     status: WriteStatus,
 }
 
+impl Debug for SafeWrite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SafeWrite")
+            .field("status", &self.status)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
 enum WriteStatus {
     Err(io::Error),
     Ok,

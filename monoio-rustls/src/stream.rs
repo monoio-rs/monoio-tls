@@ -19,11 +19,24 @@ use crate::split::{ReadHalf, WriteHalf};
 pub struct Stream<IO, C> {
     pub(crate) io: IO,
     pub(crate) session: C,
+    #[cfg(not(feature = "unsafe_io"))]
+    r_buffer: crate::safe_io::SafeRead,
+    #[cfg(not(feature = "unsafe_io"))]
+    w_buffer: crate::safe_io::SafeWrite,
+    #[cfg(feature = "unsafe_io")]
+    r_buffer: crate::unsafe_io::UnsafeRead,
+    #[cfg(feature = "unsafe_io")]
+    w_buffer: crate::unsafe_io::UnsafeWrite,
 }
 
 impl<IO, C> Stream<IO, C> {
     pub fn new(io: IO, session: C) -> Self {
-        Self { io, session }
+        Self {
+            io,
+            session,
+            r_buffer: Default::default(),
+            w_buffer: Default::default(),
+        }
     }
 
     pub fn split(self) -> (ReadHalf<IO, C>, WriteHalf<IO, C>) {
@@ -46,20 +59,15 @@ where
     C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
 {
     pub(crate) async fn read_io(&mut self, splitted: bool) -> io::Result<usize> {
-        #[cfg(feature = "unsafe_io")]
-        let mut reader = crate::unsafe_io::UnsafeRead::default();
-        #[cfg(not(feature = "unsafe_io"))]
-        let mut reader = crate::safe_io::SafeRead::default();
-
         let n = loop {
-            match self.session.read_tls(&mut reader) {
+            match self.session.read_tls(&mut self.r_buffer) {
                 Ok(n) => {
                     break n;
                 }
                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
                     #[allow(unused_unsafe)]
                     unsafe {
-                        reader.do_io(&mut self.io).await?
+                        self.r_buffer.do_io(&mut self.io).await?
                     };
                     continue;
                 }
@@ -92,20 +100,15 @@ where
     }
 
     pub(crate) async fn write_io(&mut self) -> io::Result<usize> {
-        #[cfg(feature = "unsafe_io")]
-        let mut writer = crate::unsafe_io::UnsafeWrite::default();
-        #[cfg(not(feature = "unsafe_io"))]
-        let mut writer = crate::safe_io::SafeWrite::default();
-
         let n = loop {
-            match self.session.write_tls(&mut writer) {
+            match self.session.write_tls(&mut self.w_buffer) {
                 Ok(n) => {
                     break n;
                 }
                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
                     #[allow(unused_unsafe)]
                     unsafe {
-                        writer.do_io(&mut self.io).await?
+                        self.w_buffer.do_io(&mut self.io).await?
                     };
                     continue;
                 }
@@ -114,7 +117,7 @@ where
         };
         // Flush buffered data, only needed for safe_io.
         #[cfg(not(feature = "unsafe_io"))]
-        writer.do_io(&mut self.io).await?;
+        self.w_buffer.do_io(&mut self.io).await?;
 
         Ok(n)
     }

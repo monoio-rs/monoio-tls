@@ -8,11 +8,11 @@ license = "MIT/Apache-2.0"
 name = "monoio-rustls"
 readme = "README.md"
 repository = "https://github.com/monoio-rs/monoio-tls"
-version = "0.0.5"
+version = "0.0.6"
 
 [dependencies]
 bytes = {version = "1"}
-monoio = {version = "0.0.8", default-features = false, features = ["bytes"]}
+monoio = {version = "0.0.8", default-features = false}
 rustls = {version = "0.20", default-features = false}
 thiserror = {version = "1"}
 
@@ -26,5 +26,5 @@ tls12 = ["rustls/tls12"]
 unsafe_io = []
 
 [dev-dependencies]
-monoio = {version = "0.0.8", features = ["bytes"]}
+monoio = {version = "0.0.8"}
 webpki-roots = "0.22"

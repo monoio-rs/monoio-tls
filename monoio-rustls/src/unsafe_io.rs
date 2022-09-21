@@ -6,6 +6,7 @@ use monoio::{
 };
 
 /// Used by both UnsafeRead and UnsafeWrite.
+#[derive(Debug)]
 enum Status {
     /// We haven't do real io, and maybe the dest is recorded.
     WaitFill(Option<(*const u8, usize)>),
@@ -27,7 +28,7 @@ impl Default for Status {
 /// Note that this action is an unsafe hack to avoid data copy.
 /// You can only use this wrapper when you make sure the read dest is always
 /// a valid buffer.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub(crate) struct UnsafeRead {
     status: Status,
 }
@@ -72,7 +73,7 @@ impl io::Read for UnsafeRead {
 }
 
 /// UnsafeWrite behaves like `UnsafeRead`.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub(crate) struct UnsafeWrite {
     status: Status,
 }
