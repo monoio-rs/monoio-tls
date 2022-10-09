@@ -134,6 +134,9 @@ impl SafeRead {
 
 impl io::Read for SafeRead {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.buffer.is_none() {
+            return Err(io::ErrorKind::Other.into());
+        }
         // if buffer is empty, return WoundBlock.
         let buffer = self.buffer.as_mut().expect("buffer mut expected");
         if buffer.is_empty() {
@@ -213,6 +216,9 @@ impl SafeWrite {
 
 impl io::Write for SafeWrite {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if self.buffer.is_none() {
+            return Err(io::ErrorKind::Other.into());
+        }
         // if there is too much data inside the buffer, return WoundBlock
         let buffer = self.buffer.as_mut().expect("buffer mut expected");
         if !matches!(self.status, WriteStatus::Ok) {
@@ -233,6 +239,9 @@ impl io::Write for SafeWrite {
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        if self.buffer.is_none() {
+            return Err(io::ErrorKind::Other.into());
+        }
         let buffer = self.buffer.as_mut().expect("buffer mut expected");
         if !matches!(self.status, WriteStatus::Ok) {
             match std::mem::replace(&mut self.status, WriteStatus::Ok) {
