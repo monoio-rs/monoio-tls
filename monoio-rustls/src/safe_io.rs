@@ -105,6 +105,8 @@ impl Default for SafeRead {
 impl SafeRead {
     pub(crate) async fn do_io<IO: AsyncReadRent>(&mut self, mut io: IO) -> io::Result<usize> {
         if self.buffer.is_none() {
+            // if called do_io after the time async read/write had been cancelled, 
+            // buffer will be none, so we return Other error.
             return Err(io::ErrorKind::Other.into());
         }
         // if there are some data inside the buffer, just return.
@@ -138,6 +140,8 @@ impl SafeRead {
 impl io::Read for SafeRead {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.buffer.is_none() {
+            // if called read after the time async read/write had been cancelled, 
+            // buffer will be none, so we return Other error.
             return Err(io::ErrorKind::Other.into());
         }
         // if buffer is empty, return WoundBlock.
@@ -194,6 +198,8 @@ impl Default for SafeWrite {
 impl SafeWrite {
     pub(crate) async fn do_io<IO: AsyncWriteRent>(&mut self, mut io: IO) -> io::Result<usize> {
         if self.buffer.is_none() {
+            // if called do_io after the time async read/write had been cancelled, 
+            // buffer will be none, so we return Other error.
             return Err(io::ErrorKind::Other.into());
         }
         // if the buffer is empty, just return.
@@ -223,6 +229,8 @@ impl SafeWrite {
 impl io::Write for SafeWrite {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if self.buffer.is_none() {
+            // if called write after the time async read/write had been cancelled, 
+            // buffer will be none, so we return Other error.
             return Err(io::ErrorKind::Other.into());
         }
         // if there is too much data inside the buffer, return WoundBlock
@@ -246,6 +254,8 @@ impl io::Write for SafeWrite {
 
     fn flush(&mut self) -> io::Result<()> {
         if self.buffer.is_none() {
+            // if called flush after the time async read/write had been cancelled, 
+            // buffer will be none, so we return Other error.
             return Err(io::ErrorKind::Other.into());
         }
         let buffer = self.buffer.as_mut().expect("buffer mut expected");
