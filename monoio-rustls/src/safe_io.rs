@@ -104,6 +104,9 @@ impl Default for SafeRead {
 
 impl SafeRead {
     pub(crate) async fn do_io<IO: AsyncReadRent>(&mut self, mut io: IO) -> io::Result<usize> {
+        if self.buffer.is_none() {
+            return Err(io::ErrorKind::Other.into());
+        }
         // if there are some data inside the buffer, just return.
         let buffer = self.buffer.as_ref().expect("buffer ref expected");
         if !buffer.is_empty() {
@@ -190,6 +193,9 @@ impl Default for SafeWrite {
 
 impl SafeWrite {
     pub(crate) async fn do_io<IO: AsyncWriteRent>(&mut self, mut io: IO) -> io::Result<usize> {
+        if self.buffer.is_none() {
+            return Err(io::ErrorKind::Other.into());
+        }
         // if the buffer is empty, just return.
         let buffer = self.buffer.as_ref().expect("buffer ref expected");
         if buffer.is_empty() {
