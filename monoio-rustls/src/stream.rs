@@ -199,15 +199,15 @@ where
     }
 }
 
-impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData> AsyncReadRent for Stream<IO, C>
+impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData + 'static> AsyncReadRent for Stream<IO, C>
 where
     C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
 {
-    type ReadFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
+    type ReadFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
     where
         T: IoBufMut + 'a, Self: 'a;
 
-    type ReadvFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
+    type ReadvFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
     where
         T: IoVecBufMut + 'a, Self: 'a;
 
@@ -229,23 +229,23 @@ where
     }
 }
 
-impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData> AsyncWriteRent for Stream<IO, C>
+impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData + 'static> AsyncWriteRent for Stream<IO, C>
 where
     C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
 {
-    type WriteFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
+    type WriteFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
     where
         T: IoBuf + 'a, Self: 'a;
 
-    type WritevFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
+    type WritevFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
     where
         T: IoVecBuf + 'a, Self: 'a;
 
-    type FlushFuture<'a> = impl Future<Output = io::Result<()>>
+    type FlushFuture<'a> = impl Future<Output = io::Result<()>> + 'a
     where
         Self: 'a;
 
-    type ShutdownFuture<'a> = impl Future<Output = io::Result<()>>
+    type ShutdownFuture<'a> = impl Future<Output = io::Result<()>> + 'a
     where
         Self: 'a;
 

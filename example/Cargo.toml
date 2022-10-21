@@ -4,12 +4,12 @@ name = "monoio-tls-example"
 version = "0.1.0"
 
 [dependencies]
-monoio = {version = "0.0.8"}
+monoio = {version = "0.0.9"}
 rustls = {version = "0.20", features = ["tls12"]}
 rustls-pemfile = "1"
 webpki-roots = "0.22"
 
-monoio-rustls = {version = "0.0.6", path = "../monoio-rustls", features = ["tls12"]}
+monoio-rustls = {version = "0.0.7", path = "../monoio-rustls", features = ["tls12"]}
 
 [[bin]]
 name = "server"

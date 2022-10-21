@@ -30,15 +30,16 @@ pub struct WriteHalf<IO, C> {
     pub(crate) inner: Rc<UnsafeCell<Stream<IO, C>>>,
 }
 
-impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData> AsyncReadRent for ReadHalf<IO, C>
+impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData + 'static> AsyncReadRent
+    for ReadHalf<IO, C>
 where
     C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
 {
-    type ReadFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
+    type ReadFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
     where
         T: IoBufMut + 'a, Self: 'a;
 
-    type ReadvFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
+    type ReadvFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
     where
         T: IoVecBufMut + 'a, Self: 'a;
 
@@ -66,23 +67,24 @@ impl<IO, C> ReadHalf<IO, C> {
     }
 }
 
-impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData> AsyncWriteRent for WriteHalf<IO, C>
+impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData + 'static> AsyncWriteRent
+    for WriteHalf<IO, C>
 where
     C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
 {
-    type WriteFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
+    type WriteFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
     where
         T: IoBuf + 'a, Self: 'a;
 
-    type WritevFuture<'a, T> = impl Future<Output = BufResult<usize, T>>
+    type WritevFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
     where
         T: IoVecBuf + 'a, Self: 'a;
 
-    type FlushFuture<'a> = impl Future<Output = Result<(), std::io::Error>>
+    type FlushFuture<'a> = impl Future<Output = Result<(), std::io::Error>> + 'a
     where
         Self: 'a;
 
-    type ShutdownFuture<'a> = impl Future<Output = Result<(), std::io::Error>>
+    type ShutdownFuture<'a> = impl Future<Output = Result<(), std::io::Error>> + 'a
     where
         Self: 'a;
 
