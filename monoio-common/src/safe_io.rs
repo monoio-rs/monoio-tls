@@ -72,13 +72,13 @@ unsafe impl monoio::buf::IoBufMut for Buffer {
     }
 }
 
-pub(crate) struct SafeRead {
+pub struct BufferedReader {
     // the option is only meant for temporary take, it always should be some
     buffer: Option<Buffer>,
     status: ReadStatus,
 }
 
-impl Debug for SafeRead {
+impl Debug for BufferedReader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SafeRead")
             .field("status", &self.status)
@@ -93,7 +93,7 @@ enum ReadStatus {
     Ok,
 }
 
-impl Default for SafeRead {
+impl Default for BufferedReader {
     fn default() -> Self {
         Self {
             buffer: Some(Buffer::new()),
@@ -102,8 +102,8 @@ impl Default for SafeRead {
     }
 }
 
-impl SafeRead {
-    pub(crate) async fn do_io<IO: AsyncReadRent>(&mut self, mut io: IO) -> io::Result<usize> {
+impl BufferedReader {
+    pub async fn do_io<IO: AsyncReadRent>(&mut self, io: &mut IO) -> io::Result<usize> {
         // if there are some data inside the buffer, just return.
         let buffer = self.buffer.as_ref().expect("buffer ref expected");
         if !buffer.is_empty() {
@@ -132,7 +132,7 @@ impl SafeRead {
     }
 }
 
-impl io::Read for SafeRead {
+impl io::Read for BufferedReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // if buffer is empty, return WoundBlock.
         let buffer = self.buffer.as_mut().expect("buffer mut expected");
@@ -156,13 +156,13 @@ impl io::Read for SafeRead {
     }
 }
 
-pub(crate) struct SafeWrite {
+pub struct BufferedWriter {
     // the option is only meant for temporary take, it always should be some
     buffer: Option<Buffer>,
     status: WriteStatus,
 }
 
-impl Debug for SafeWrite {
+impl Debug for BufferedWriter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SafeWrite")
             .field("status", &self.status)
@@ -176,7 +176,7 @@ enum WriteStatus {
     Ok,
 }
 
-impl Default for SafeWrite {
+impl Default for BufferedWriter {
     fn default() -> Self {
         Self {
             buffer: Some(Buffer::new()),
@@ -185,8 +185,8 @@ impl Default for SafeWrite {
     }
 }
 
-impl SafeWrite {
-    pub(crate) async fn do_io<IO: AsyncWriteRent>(&mut self, mut io: IO) -> io::Result<usize> {
+impl BufferedWriter {
+    pub async fn do_io<IO: AsyncWriteRent>(&mut self, mut io: IO) -> io::Result<usize> {
         // if the buffer is empty, just return.
         let buffer = self.buffer.as_ref().expect("buffer ref expected");
         if buffer.is_empty() {
@@ -211,7 +211,7 @@ impl SafeWrite {
     }
 }
 
-impl io::Write for SafeWrite {
+impl io::Write for BufferedWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // if there is too much data inside the buffer, return WoundBlock
         let buffer = self.buffer.as_mut().expect("buffer mut expected");

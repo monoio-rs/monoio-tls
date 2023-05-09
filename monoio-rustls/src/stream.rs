@@ -1,36 +1,26 @@
 use std::{
-    cell::UnsafeCell,
     future::Future,
     io::{self, Read, Write},
-    ops::{Deref, DerefMut},
-    rc::Rc,
 };
 
 use monoio::{
     buf::{IoBuf, IoBufMut, IoVecBuf, IoVecBufMut, RawBuf},
-    io::{AsyncReadRent, AsyncWriteRent},
+    io::{AsyncReadRent, AsyncWriteRent, Split},
     BufResult,
 };
-use rustls::{ConnectionCommon, SideData};
-
-use crate::split::{ReadHalf, WriteHalf};
+use monoio_common::{BufferedReader, BufferedWriter};
+use rustls::Connection;
 
 #[derive(Debug)]
-pub struct Stream<IO, C> {
+pub struct Stream<IO> {
     pub(crate) io: IO,
-    pub(crate) session: C,
-    #[cfg(not(feature = "unsafe_io"))]
-    r_buffer: crate::safe_io::SafeRead,
-    #[cfg(not(feature = "unsafe_io"))]
-    w_buffer: crate::safe_io::SafeWrite,
-    #[cfg(feature = "unsafe_io")]
-    r_buffer: crate::unsafe_io::UnsafeRead,
-    #[cfg(feature = "unsafe_io")]
-    w_buffer: crate::unsafe_io::UnsafeWrite,
+    pub(crate) session: Connection,
+    r_buffer: BufferedReader,
+    w_buffer: BufferedWriter,
 }
 
-impl<IO, C> Stream<IO, C> {
-    pub fn new(io: IO, session: C) -> Self {
+impl<IO> Stream<IO> {
+    pub fn new(io: IO, session: Connection) -> Self {
         Self {
             io,
             session,
@@ -39,24 +29,16 @@ impl<IO, C> Stream<IO, C> {
         }
     }
 
-    pub fn split(self) -> (ReadHalf<IO, C>, WriteHalf<IO, C>) {
-        let shared = Rc::new(UnsafeCell::new(self));
-        (
-            ReadHalf {
-                inner: shared.clone(),
-            },
-            WriteHalf { inner: shared },
-        )
-    }
-
-    pub fn into_parts(self) -> (IO, C) {
+    pub fn into_parts(self) -> (IO, Connection) {
         (self.io, self.session)
     }
 }
 
-impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData> Stream<IO, C>
+unsafe impl<IO> Split for Stream<IO> {}
+
+impl<IO> Stream<IO>
 where
-    C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
+    IO: AsyncReadRent + AsyncWriteRent,
 {
     pub(crate) async fn read_io(&mut self, splitted: bool) -> io::Result<usize> {
         let n = loop {
@@ -199,9 +181,9 @@ where
     }
 }
 
-impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData + 'static> AsyncReadRent for Stream<IO, C>
+impl<IO> AsyncReadRent for Stream<IO>
 where
-    C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
+    IO: AsyncReadRent + AsyncWriteRent,
 {
     type ReadFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
     where
@@ -229,9 +211,9 @@ where
     }
 }
 
-impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData + 'static> AsyncWriteRent for Stream<IO, C>
+impl<IO> AsyncWriteRent for Stream<IO>
 where
-    C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
+    IO: AsyncReadRent + AsyncWriteRent,
 {
     type WriteFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
     where

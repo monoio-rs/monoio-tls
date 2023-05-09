@@ -29,16 +29,13 @@ impl Default for Status {
 /// You can only use this wrapper when you make sure the read dest is always
 /// a valid buffer.
 #[derive(Default, Debug)]
-pub(crate) struct UnsafeRead {
+pub struct BufferedReader {
     status: Status,
 }
 
-impl UnsafeRead {
+impl BufferedReader {
     /// `do_io` must be called after calling to io::Read::read.
-    pub(crate) async unsafe fn do_io<IO: AsyncReadRent>(
-        &mut self,
-        mut io: IO,
-    ) -> io::Result<usize> {
+    pub async unsafe fn do_io<IO: AsyncReadRent>(&mut self, io: &mut IO) -> io::Result<usize> {
         match self.status {
             Status::WaitFill(Some((ptr, len))) => {
                 let buf = RawBuf { ptr, len };
@@ -52,7 +49,7 @@ impl UnsafeRead {
     }
 }
 
-impl io::Read for UnsafeRead {
+impl io::Read for BufferedReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self.status {
             Status::WaitFill(_) => {
@@ -74,16 +71,13 @@ impl io::Read for UnsafeRead {
 
 /// UnsafeWrite behaves like `UnsafeRead`.
 #[derive(Default, Debug)]
-pub(crate) struct UnsafeWrite {
+pub struct BufferedWriter {
     status: Status,
 }
 
-impl UnsafeWrite {
+impl BufferedWriter {
     /// `do_io` must be called after calling to io::Write::write.
-    pub(crate) async unsafe fn do_io<IO: AsyncWriteRent>(
-        &mut self,
-        mut io: IO,
-    ) -> io::Result<usize> {
+    pub async unsafe fn do_io<IO: AsyncWriteRent>(&mut self, io: &mut IO) -> io::Result<usize> {
         match self.status {
             Status::WaitFill(Some((ptr, len))) => {
                 let buf = RawBuf { ptr, len };
@@ -97,7 +91,7 @@ impl UnsafeWrite {
     }
 }
 
-impl io::Write for UnsafeWrite {
+impl io::Write for BufferedWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match self.status {
             Status::WaitFill(_) => {

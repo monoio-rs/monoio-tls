@@ -1,6 +1,3 @@
 [workspace]
 
-members = [
-  "monoio-rustls",
-  "example",
-]
+members = ["monoio-rustls", "monoio-nativetls", "monoio-common", "example"]

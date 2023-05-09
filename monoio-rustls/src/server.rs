@@ -1,20 +1,12 @@
 use std::sync::Arc;
 
 use monoio::io::{AsyncReadRent, AsyncWriteRent};
-use rustls::{ServerConfig, ServerConnection};
+use rustls::{Connection, ServerConfig, ServerConnection};
 
-use crate::{
-    split::{ReadHalf, WriteHalf},
-    stream::Stream,
-    TlsError,
-};
+use crate::{stream::Stream, TlsError};
 
 /// A wrapper around an underlying raw stream which implements the TLS protocol.
-pub type TlsStream<IO> = Stream<IO, ServerConnection>;
-/// TlsStream for read only.
-pub type TlsStreamReadHalf<IO> = ReadHalf<IO, ServerConnection>;
-/// TlsStream for write only.
-pub type TlsStreamWriteHalf<IO> = WriteHalf<IO, ServerConnection>;
+pub type TlsStream<IO> = Stream<IO>;
 
 /// A wrapper around a `rustls::ServerConfig`, providing an async `accept` method.
 #[derive(Clone)]
@@ -42,7 +34,7 @@ impl TlsAcceptor {
         IO: AsyncReadRent + AsyncWriteRent,
     {
         let session = ServerConnection::new(self.inner.clone())?;
-        let mut stream = Stream::new(stream, session);
+        let mut stream = Stream::new(stream, Connection::Server(session));
         stream.handshake().await?;
         Ok(stream)
     }
