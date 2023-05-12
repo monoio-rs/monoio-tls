@@ -1,0 +1,29 @@
+[package]
+name = "monoio-native-tls"
+version = "0.1.0"
+
+authors = ["ChiHai <ihciah@gmail.com>", "Rain Jiang <rain-jiang@outlook.com>"]
+categories = ["asynchronous", "cryptography", "network-programming"]
+description = "Asynchronous TLS streams wrapper for Monoio based on NativeTLS."
+edition = "2021"
+homepage = "https://github.com/monoio-rs/monoio-tls"
+license = "MIT/Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/monoio-rs/monoio-tls"
+
+[dependencies]
+monoio-io-wrapper = { version = "0.1.0", path = "../monoio-io-wrapper" }
+native-tls = { version = "0.2" }
+
+bytes = { version = "1" }
+monoio = { version = "0.1.2", default-features = false }
+thiserror = { version = "1" }
+
+openssl-sys = { version = "0.9", optional = true }
+tracing = { version = "0.1", optional = true }
+
+[features]
+default = []
+alpn = ["native-tls/alpn"]
+vendored = ["native-tls/vendored"]
+qat = ["openssl-sys", "tracing"]

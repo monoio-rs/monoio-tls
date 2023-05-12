@@ -1,0 +1,19 @@
+[package]
+name = "monoio-io-wrapper"
+version = "0.1.0"
+
+authors = ["ChiHai <ihciah@gmail.com>", "Rain Jiang <rain-jiang@outlook.com>"]
+categories = ["asynchronous", "network-programming"]
+description = "A read/write wrapper to bridge sync and async io"
+edition = "2021"
+homepage = "https://github.com/monoio-rs/monoio-tls"
+license = "MIT/Apache-2.0"
+readme = "README.adoc"
+repository = "https://github.com/monoio-rs/monoio-tls"
+
+[dependencies]
+monoio = "0.1.2"
+
+[features]
+default = []
+unsafe_io = []

@@ -1,0 +1,13 @@
+= Monoio IO Wrapper
+An io wrapper to bind std io and monoio async io.
+
+|===
+|Return |do_io |read / write
+
+.2+|SafeIO .2+| Current async r/w result | 1. WouldBlock: Empty(r) or Full(w) and need calling `do_io`
+|2. Other: success io or last `do_io` error
+
+.2+|UnsafeIO | 1. WouldBlock: Not capture mem block info, need calling `read` / `write` | 1. WouldBlock: mem block info is captured and need calling `do_io`
+|2. Other: current async r/w result | 2. Other: success io or last `do_io` error
+
+|===
