@@ -5,19 +5,20 @@ use monoio::{
     net::TcpStream,
 };
 use monoio_rustls::TlsConnector;
-use rustls::{Certificate, OwnedTrustAnchor, RootCertStore};
+use rustls::{Certificate, RootCertStore};
 use rustls_pemfile::certs;
 
 #[monoio::main]
 async fn main() {
     let mut root_store = RootCertStore::empty();
-    root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-        OwnedTrustAnchor::from_subject_spki_name_constraints(
-            ta.subject,
-            ta.spki,
-            ta.name_constraints,
-        )
-    }));
+    // Uncomment if you want to use webpki_roots provided CA certs.
+    // root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+    //     rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+    //         ta.subject,
+    //         ta.spki,
+    //         ta.name_constraints,
+    //     )
+    // }));
     root_store
         .add(&read_ca_certs())
         .expect("unable to trust self-signed CA");

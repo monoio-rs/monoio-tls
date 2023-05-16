@@ -1,4 +1,4 @@
-use std::{fmt::Debug, hint::unreachable_unchecked, io};
+use std::{fmt::Debug, io, mem};
 
 use monoio::{
     buf::{IoBuf, IoBufMut},
@@ -13,12 +13,18 @@ struct Buffer {
     buf: Box<[u8]>,
 }
 
+impl Default for Buffer {
+    fn default() -> Self {
+        Self::new(BUFFER_SIZE)
+    }
+}
+
 impl Buffer {
-    fn new() -> Self {
+    fn new(size: usize) -> Self {
         Self {
             read: 0,
             write: 0,
-            buf: vec![0; BUFFER_SIZE].into_boxed_slice(),
+            buf: vec![0; size].into_boxed_slice(),
         }
     }
 
@@ -39,7 +45,7 @@ impl Buffer {
     }
 
     fn advance(&mut self, n: usize) {
-        assert!(self.write - self.read >= n);
+        assert!(self.read + n <= self.write);
         self.read += n;
         if self.read == self.write {
             self.read = 0;
@@ -72,7 +78,7 @@ unsafe impl monoio::buf::IoBufMut for Buffer {
     }
 }
 
-pub(crate) struct SafeRead {
+pub struct SafeRead {
     // the option is only meant for temporary take, it always should be some
     buffer: Option<Buffer>,
     status: ReadStatus,
@@ -96,14 +102,25 @@ enum ReadStatus {
 impl Default for SafeRead {
     fn default() -> Self {
         Self {
-            buffer: Some(Buffer::new()),
+            buffer: Some(Buffer::default()),
             status: ReadStatus::Ok,
         }
     }
 }
 
 impl SafeRead {
-    pub(crate) async fn do_io<IO: AsyncReadRent>(&mut self, mut io: IO) -> io::Result<usize> {
+    /// Create a new SafeRead with given buffer size.
+    pub fn new(buffer_size: usize) -> Self {
+        Self {
+            buffer: Some(Buffer::new(buffer_size)),
+            status: ReadStatus::Ok,
+        }
+    }
+
+    /// `do_io` do async read from io to inner buffer.
+    /// # Handle return value
+    /// _: the read result.
+    pub async fn do_io<IO: AsyncReadRent>(&mut self, mut io: IO) -> io::Result<usize> {
         // if there are some data inside the buffer, just return.
         let buffer = self.buffer.as_ref().expect("buffer ref expected");
         if !buffer.is_empty() {
@@ -111,7 +128,9 @@ impl SafeRead {
         }
 
         // read from raw io
-        let buffer = self.buffer.take().expect("buffer ownership expected");
+        // # Safety
+        // We have already checked it is not None.
+        let buffer = unsafe { self.buffer.take().unwrap_unchecked() };
         let (result, buf) = io.read(buffer).await;
         self.buffer = Some(buf);
         match result {
@@ -133,18 +152,19 @@ impl SafeRead {
 }
 
 impl io::Read for SafeRead {
+    /// `read` from buffer.
+    /// # Handle return value
+    /// 1. Err(WouldBlock): the buffer is empty, call do_io to fetch more.
+    /// 2. _: handle it.
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // if buffer is empty, return WoundBlock.
         let buffer = self.buffer.as_mut().expect("buffer mut expected");
         if buffer.is_empty() {
-            if !matches!(self.status, ReadStatus::Ok) {
-                match std::mem::replace(&mut self.status, ReadStatus::Ok) {
-                    ReadStatus::Eof => return Ok(0),
-                    ReadStatus::Err(e) => return Err(e),
-                    ReadStatus::Ok => unsafe { unreachable_unchecked() },
-                }
-            }
-            return Err(io::ErrorKind::WouldBlock.into());
+            return match mem::replace(&mut self.status, ReadStatus::Ok) {
+                ReadStatus::Eof => Ok(0),
+                ReadStatus::Err(e) => Err(e),
+                ReadStatus::Ok => Err(io::ErrorKind::WouldBlock.into()),
+            };
         }
 
         // now buffer is not empty. copy it.
@@ -156,7 +176,7 @@ impl io::Read for SafeRead {
     }
 }
 
-pub(crate) struct SafeWrite {
+pub struct SafeWrite {
     // the option is only meant for temporary take, it always should be some
     buffer: Option<Buffer>,
     status: WriteStatus,
@@ -179,14 +199,25 @@ enum WriteStatus {
 impl Default for SafeWrite {
     fn default() -> Self {
         Self {
-            buffer: Some(Buffer::new()),
+            buffer: Some(Buffer::default()),
             status: WriteStatus::Ok,
         }
     }
 }
 
 impl SafeWrite {
-    pub(crate) async fn do_io<IO: AsyncWriteRent>(&mut self, mut io: IO) -> io::Result<usize> {
+    /// Create a new SafeWrite with given buffer size.
+    pub fn new(buffer_size: usize) -> Self {
+        Self {
+            buffer: Some(Buffer::new(buffer_size)),
+            status: WriteStatus::Ok,
+        }
+    }
+
+    /// `do_io` do async write from inner buffer to io.
+    /// # Handle return value
+    /// _: the write_all result(note: the data may have been written even when error).
+    pub async fn do_io<IO: AsyncWriteRent>(&mut self, mut io: IO) -> io::Result<usize> {
         // if the buffer is empty, just return.
         let buffer = self.buffer.as_ref().expect("buffer ref expected");
         if buffer.is_empty() {
@@ -194,7 +225,9 @@ impl SafeWrite {
         }
 
         // buffer is not empty now. write it.
-        let buffer = self.buffer.take().expect("buffer ownership expected");
+        // # Safety
+        // We have already checked it is not None.
+        let buffer = unsafe { self.buffer.take().unwrap_unchecked() };
         let (result, buffer) = io.write_all(buffer).await;
         self.buffer = Some(buffer);
         match result {
@@ -212,17 +245,17 @@ impl SafeWrite {
 }
 
 impl io::Write for SafeWrite {
+    /// `write` to buffer.
+    /// # Handle return value
+    /// 1. Err(WouldBlock): the buffer is full, call do_io to flush it.
+    /// 2. _: handle it.
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // if there is too much data inside the buffer, return WoundBlock
         let buffer = self.buffer.as_mut().expect("buffer mut expected");
-        if !matches!(self.status, WriteStatus::Ok) {
-            match std::mem::replace(&mut self.status, WriteStatus::Ok) {
-                WriteStatus::Err(e) => return Err(e),
-                WriteStatus::Ok => unsafe { unreachable_unchecked() },
-            }
-        }
-        if buffer.is_full() {
-            return Err(io::ErrorKind::WouldBlock.into());
+        match mem::replace(&mut self.status, WriteStatus::Ok) {
+            WriteStatus::Err(e) => return Err(e),
+            WriteStatus::Ok if buffer.is_full() => return Err(io::ErrorKind::WouldBlock.into()),
+            _ => (),
         }
 
         // there is space inside the buffer, copy to it.
@@ -232,17 +265,16 @@ impl io::Write for SafeWrite {
         Ok(to_copy)
     }
 
+    /// `flush` to buffer.
+    /// # Handle return value
+    /// 1. Err(WouldBlock): the buffer is full, call do_io to flush it.
+    /// 2. _: handle it.
     fn flush(&mut self) -> io::Result<()> {
         let buffer = self.buffer.as_mut().expect("buffer mut expected");
-        if !matches!(self.status, WriteStatus::Ok) {
-            match std::mem::replace(&mut self.status, WriteStatus::Ok) {
-                WriteStatus::Err(e) => return Err(e),
-                WriteStatus::Ok => unsafe { unreachable_unchecked() },
-            }
+        match mem::replace(&mut self.status, WriteStatus::Ok) {
+            WriteStatus::Err(e) => Err(e),
+            WriteStatus::Ok if !buffer.is_empty() => Err(io::ErrorKind::WouldBlock.into()),
+            _ => Ok(()),
         }
-        if !buffer.is_empty() {
-            return Err(io::ErrorKind::WouldBlock.into());
-        }
-        Ok(())
     }
 }

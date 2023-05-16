@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, mem};
 
 use monoio::{
     buf::{IoBuf, IoBufMut},
@@ -11,7 +11,7 @@ enum Status {
     /// We haven't do real io, and maybe the dest is recorded.
     WaitFill(Option<(*const u8, usize)>),
     /// We have already do real io. The length maybe zero or non-zero.
-    Filled(usize),
+    Filled(Result<usize, io::Error>),
 }
 
 impl Default for Status {
@@ -29,90 +29,128 @@ impl Default for Status {
 /// You can only use this wrapper when you make sure the read dest is always
 /// a valid buffer.
 #[derive(Default, Debug)]
-pub(crate) struct UnsafeRead {
+pub struct UnsafeRead {
     status: Status,
 }
 
 impl UnsafeRead {
+    pub const fn new() -> Self {
+        Self {
+            status: Status::WaitFill(None),
+        }
+    }
+
     /// `do_io` must be called after calling to io::Read::read.
-    pub(crate) async unsafe fn do_io<IO: AsyncReadRent>(
-        &mut self,
-        mut io: IO,
-    ) -> io::Result<usize> {
+    /// # Handle return value
+    /// 1. Ok(n): previous read data length.
+    /// 2. Err(e): previous error.
+    /// 3. Err(WouldBlock): need calling read to capture ptr and len.
+    /// # Safety
+    /// User must make sure the former buffer is still valid until io finished.
+    pub async unsafe fn do_io<IO: AsyncReadRent>(&mut self, mut io: IO) -> io::Result<usize> {
         match self.status {
             Status::WaitFill(Some((ptr, len))) => {
                 let buf = RawBuf { ptr, len };
-                let n = io.read(buf).await.0?;
-                self.status = Status::Filled(n);
-                Ok(n)
+                let read_ret = io.read(buf).await.0;
+                let rret: io::Result<usize> = match &read_ret {
+                    Ok(n) => Ok(*n),
+                    Err(e) => Err(e.kind().into()),
+                };
+                self.status = Status::Filled(read_ret);
+                rret
             }
-            Status::Filled(len) => Ok(len),
             Status::WaitFill(None) => Err(io::ErrorKind::WouldBlock.into()),
+            Status::Filled(ref prev_ret) => match prev_ret {
+                Ok(n) => Ok(*n),
+                Err(e) => Err(e.kind().into()),
+            },
         }
+    }
+
+    /// Clear status.
+    pub fn reset(&mut self) {
+        self.status = Status::WaitFill(None);
     }
 }
 
 impl io::Read for UnsafeRead {
+    /// `read` from buffer(not really a buffer).
+    /// # Handle return value
+    /// 1. Err(WouldBlock): ptr and len captured, need call do_io and then retry read.
+    /// 2. _: handle it.
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match self.status {
+        match mem::replace(&mut self.status, Status::WaitFill(None)) {
             Status::WaitFill(_) => {
                 let ptr = buf.as_ptr();
                 let len = buf.len();
                 self.status = Status::WaitFill(Some((ptr, len)));
                 Err(io::ErrorKind::WouldBlock.into())
             }
-            Status::Filled(len) => {
-                if len != 0 {
-                    // reset only when not eof
-                    self.status = Status::WaitFill(None);
-                }
-                Ok(len)
-            }
+            Status::Filled(ret) => ret,
         }
     }
 }
 
 /// UnsafeWrite behaves like `UnsafeRead`.
 #[derive(Default, Debug)]
-pub(crate) struct UnsafeWrite {
+pub struct UnsafeWrite {
     status: Status,
 }
 
 impl UnsafeWrite {
+    pub const fn new() -> Self {
+        Self {
+            status: Status::WaitFill(None),
+        }
+    }
+
     /// `do_io` must be called after calling to io::Write::write.
-    pub(crate) async unsafe fn do_io<IO: AsyncWriteRent>(
-        &mut self,
-        mut io: IO,
-    ) -> io::Result<usize> {
+    /// # Handle return value
+    /// 1. Ok(n): previous written data length.
+    /// 2. Err(e): previous error.
+    /// 3. Err(WouldBlock): need calling write to capture ptr and len.
+    /// # Safety
+    /// User must make sure the former buffer is still valid until io finished.
+    pub async unsafe fn do_io<IO: AsyncWriteRent>(&mut self, mut io: IO) -> io::Result<usize> {
         match self.status {
             Status::WaitFill(Some((ptr, len))) => {
                 let buf = RawBuf { ptr, len };
-                let n = io.write(buf).await.0?;
-                self.status = Status::Filled(n);
-                Ok(n)
+                let write_ret = io.write(buf).await.0;
+                let rret: io::Result<usize> = match &write_ret {
+                    Ok(n) => Ok(*n),
+                    Err(e) => Err(e.kind().into()),
+                };
+                self.status = Status::Filled(write_ret);
+                rret
             }
-            Status::Filled(len) => Ok(len),
             Status::WaitFill(None) => Err(io::ErrorKind::WouldBlock.into()),
+            Status::Filled(ref prev_ret) => match prev_ret {
+                Ok(n) => Ok(*n),
+                Err(e) => Err(e.kind().into()),
+            },
         }
+    }
+
+    /// Clear status.
+    pub fn reset(&mut self) {
+        self.status = Status::WaitFill(None);
     }
 }
 
 impl io::Write for UnsafeWrite {
+    /// `read` to buffer.
+    /// # Handle return value
+    /// 1. Err(WouldBlock): ptr and len captured, need call do_io and then retry write.
+    /// 2. _: handle it.
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        match self.status {
+        match mem::replace(&mut self.status, Status::WaitFill(None)) {
             Status::WaitFill(_) => {
                 let ptr = buf.as_ptr();
                 let len = buf.len();
                 self.status = Status::WaitFill(Some((ptr, len)));
                 Err(io::ErrorKind::WouldBlock.into())
             }
-            Status::Filled(len) => {
-                if len != 0 {
-                    // reset only when not eof
-                    self.status = Status::WaitFill(None);
-                }
-                Ok(len)
-            }
+            Status::Filled(ret) => ret,
         }
     }
 

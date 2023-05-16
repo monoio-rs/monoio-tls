@@ -1,20 +1,23 @@
 [package]
-authors = ["ChiHai <ihciah@gmail.com>"]
+name = "monoio-rustls"
+version = "0.1.2"
+
+authors = ["ChiHai <ihciah@gmail.com>", "Rain Jiang <rain-jiang@outlook.com>"]
 categories = ["asynchronous", "cryptography", "network-programming"]
 description = "Asynchronous TLS streams wrapper for Monoio based on Rustls."
 edition = "2021"
 homepage = "https://github.com/monoio-rs/monoio-tls"
 license = "MIT/Apache-2.0"
-name = "monoio-rustls"
 readme = "README.md"
 repository = "https://github.com/monoio-rs/monoio-tls"
-version = "0.1.1"
 
 [dependencies]
-bytes = {version = "1"}
-monoio = {version = "0.1.2", default-features = false}
-rustls = {version = "0.20", default-features = false}
-thiserror = {version = "1"}
+monoio-io-wrapper = { version = "0.1.0", path = "../monoio-io-wrapper" }
+rustls = { version = "0.21", default-features = false }
+
+bytes = { version = "1" }
+monoio = { version = "0.1.2", default-features = false }
+thiserror = { version = "1" }
 
 [features]
 dangerous_configuration = ["rustls/dangerous_configuration"]
@@ -23,8 +26,8 @@ logging = ["rustls/logging"]
 tls12 = ["rustls/tls12"]
 # Once unsafe_io is enabled, you may not drop the future before it returns ready.
 # It saves one buffer copy than disabled.
-unsafe_io = []
+unsafe_io = ["monoio-io-wrapper/unsafe_io"]
 
 [dev-dependencies]
-monoio = {version = "0.1.2"}
-webpki-roots = "0.22"
+monoio = { version = "0.1.2" }
+webpki-roots = "0.23"

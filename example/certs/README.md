@@ -34,3 +34,9 @@ openssl x509 -req -sha512 -days 3650 \
 -in server.csr \
 -out server.crt
 ```
+
+## Convert Private Key
+To use native-tls, you have to use key in PKCS#8 or PKCS#12. Convert key from PKCS#1 to PKCS#8:
+```bash
+openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in server.key -out server.pkcs8
+```

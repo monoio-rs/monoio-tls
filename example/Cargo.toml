@@ -1,20 +1,37 @@
 [package]
-edition = "2021"
 name = "monoio-tls-example"
 version = "0.1.0"
 
+authors = ["ChiHai <ihciah@gmail.com>"]
+edition = "2021"
+publish = false
+
 [dependencies]
-monoio = {version = "0.1.0"}
-rustls = {version = "0.20", features = ["tls12"]}
+monoio = { version = "0.1.2" }
+
+# rustls
+rustls = { version = "0.21", features = ["tls12"] }
 rustls-pemfile = "1"
-webpki-roots = "0.22"
+monoio-rustls = { version = "0.1.2", path = "../monoio-rustls", features = [
+    "tls12",
+] }
 
-monoio-rustls = {version = "0.1.0", path = "../monoio-rustls", features = ["tls12"]}
+# native-tls
+native-tls = { version = "0.2" }
+monoio-native-tls = { version = "0.1.0", path = "../monoio-native-tls" }
 
 [[bin]]
-name = "server"
-path = "src/server.rs"
+name = "server-rustls"
+path = "src/server-rustls.rs"
 
 [[bin]]
-name = "client"
-path = "src/client.rs"
+name = "client-rustls"
+path = "src/client-rustls.rs"
+
+[[bin]]
+name = "server-native"
+path = "src/server-native.rs"
+
+[[bin]]
+name = "client-native"
+path = "src/client-native.rs"

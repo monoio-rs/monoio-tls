@@ -1,33 +1,26 @@
 use std::{
-    cell::UnsafeCell,
     future::Future,
     io::{self, Read, Write},
     ops::{Deref, DerefMut},
-    rc::Rc,
 };
 
 use monoio::{
     buf::{IoBuf, IoBufMut, IoVecBuf, IoVecBufMut, RawBuf},
-    io::{AsyncReadRent, AsyncWriteRent},
+    io::{AsyncReadRent, AsyncWriteRent, Split},
     BufResult,
 };
+use monoio_io_wrapper::{ReadBuffer, WriteBuffer};
 use rustls::{ConnectionCommon, SideData};
-
-use crate::split::{ReadHalf, WriteHalf};
 
 #[derive(Debug)]
 pub struct Stream<IO, C> {
     pub(crate) io: IO,
     pub(crate) session: C,
-    #[cfg(not(feature = "unsafe_io"))]
-    r_buffer: crate::safe_io::SafeRead,
-    #[cfg(not(feature = "unsafe_io"))]
-    w_buffer: crate::safe_io::SafeWrite,
-    #[cfg(feature = "unsafe_io")]
-    r_buffer: crate::unsafe_io::UnsafeRead,
-    #[cfg(feature = "unsafe_io")]
-    w_buffer: crate::unsafe_io::UnsafeWrite,
+    r_buffer: ReadBuffer,
+    w_buffer: WriteBuffer,
 }
+
+unsafe impl<IO: Split, C> Split for Stream<IO, C> {}
 
 impl<IO, C> Stream<IO, C> {
     pub fn new(io: IO, session: C) -> Self {
@@ -39,18 +32,31 @@ impl<IO, C> Stream<IO, C> {
         }
     }
 
-    pub fn split(self) -> (ReadHalf<IO, C>, WriteHalf<IO, C>) {
-        let shared = Rc::new(UnsafeCell::new(self));
-        (
-            ReadHalf {
-                inner: shared.clone(),
-            },
-            WriteHalf { inner: shared },
-        )
+    /// Enable unsafe-io.
+    /// # Safety
+    /// Users must make sure the buffer ptr and len is valid until io finished.
+    /// So the Future cannot be dropped directly. Consider using CancellableIO.
+    #[cfg(feature = "unsafe_io")]
+    pub unsafe fn new_unsafe(io: IO, session: C) -> Self {
+        Self {
+            io,
+            session,
+            r_buffer: ReadBuffer::new_unsafe(),
+            w_buffer: WriteBuffer::new_unsafe(),
+        }
     }
 
     pub fn into_parts(self) -> (IO, C) {
         (self.io, self.session)
+    }
+
+    pub(crate) fn map_conn<C2, F: FnOnce(C) -> C2>(self, f: F) -> Stream<IO, C2> {
+        Stream {
+            io: self.io,
+            session: f(self.session),
+            r_buffer: self.r_buffer,
+            w_buffer: self.w_buffer,
+        }
     }
 }
 
@@ -103,9 +109,14 @@ where
         let n = loop {
             match self.session.write_tls(&mut self.w_buffer) {
                 Ok(n) => {
+                    if self.w_buffer.is_safe() {
+                        self.w_buffer.do_io(&mut self.io).await?;
+                    }
                     break n;
                 }
                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
+                    // here we don't have to check WouldBlock since we already captured the
+                    // mem block info under unsafe-io.
                     #[allow(unused_unsafe)]
                     unsafe {
                         self.w_buffer.do_io(&mut self.io).await?
@@ -115,9 +126,6 @@ where
                 Err(err) => return Err(err),
             }
         };
-        // Flush buffered data, only needed for safe_io.
-        #[cfg(not(feature = "unsafe_io"))]
-        self.w_buffer.do_io(&mut self.io).await?;
 
         Ok(n)
     }
@@ -253,6 +261,13 @@ where
         async move {
             // construct slice
             let slice = unsafe { std::slice::from_raw_parts(buf.read_ptr(), buf.bytes_init()) };
+
+            // flush rustls inner write buffer to make sure there is space for new data
+            if self.session.wants_write() {
+                if let Err(e) = self.write_io().await {
+                    return (Err(e), buf);
+                }
+            }
 
             // write slice to rustls
             let n = match self.session.writer().write(slice) {

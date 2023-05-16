@@ -1,4 +1,4 @@
-// An echo server with tls.
+//! An echo server with tls.
 
 use std::io::{self, Cursor};
 
