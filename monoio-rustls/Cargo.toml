@@ -1,6 +1,6 @@
 [package]
 name = "monoio-rustls"
-version = "0.1.3"
+version = "0.1.4"
 
 authors = ["ChiHai <ihciah@gmail.com>", "Rain Jiang <rain-jiang@outlook.com>"]
 categories = ["asynchronous", "cryptography", "network-programming"]
