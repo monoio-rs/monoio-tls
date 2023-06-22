@@ -21,13 +21,9 @@ pub struct Stream<IO, C> {
 }
 
 impl<IO> Stream<IO, ServerConnection> {
-    pub fn alpn_protocol(&self) -> Option<String> {
-        match self.session.alpn_protocol() {
-            Some(alpn_protocol) => {
-                Some(unsafe { String::from_utf8_unchecked(alpn_protocol.to_vec()) })
-            }
-            None => None,
-        }
+    #[inline]
+    pub fn alpn_protocol(&self) -> Option<&[u8]> {
+        self.session.alpn_protocol()
     }
 }
 
