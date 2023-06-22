@@ -10,7 +10,7 @@ use monoio::{
     BufResult,
 };
 use monoio_io_wrapper::{ReadBuffer, WriteBuffer};
-use rustls::{ConnectionCommon, SideData};
+use rustls::{ConnectionCommon, ServerConnection, SideData};
 
 #[derive(Debug)]
 pub struct Stream<IO, C> {
@@ -18,6 +18,17 @@ pub struct Stream<IO, C> {
     pub(crate) session: C,
     r_buffer: ReadBuffer,
     w_buffer: WriteBuffer,
+}
+
+impl<IO> Stream<IO, ServerConnection> {
+    pub fn alpn_protocol(&self) -> Option<String> {
+        match self.session.alpn_protocol() {
+            Some(alpn_protocol) => {
+                Some(unsafe { String::from_utf8_unchecked(alpn_protocol.to_vec()) })
+            }
+            None => None,
+        }
+    }
 }
 
 unsafe impl<IO: Split, C> Split for Stream<IO, C> {}
