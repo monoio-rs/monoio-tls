@@ -195,21 +195,9 @@ where
             }
 
             // now we need data, read something into rustls
-            match self.read_io(splitted).await {
-                Ok(0) => {
-                    return (
-                        Err(io::Error::new(
-                            io::ErrorKind::UnexpectedEof,
-                            "tls raw stream eof",
-                        )),
-                        buf,
-                    );
-                }
-                Ok(_) => (),
-                Err(e) => {
-                    return (Err(e), buf);
-                }
-            };
+            if let Err(e) = self.read_io(splitted).await {
+                return (Err(e), buf);
+            }
         }
     }
 }

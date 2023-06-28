@@ -1,6 +1,6 @@
 [package]
 name = "monoio-rustls"
-version = "0.1.4"
+version = "0.1.5"
 
 authors = ["ChiHai <ihciah@gmail.com>", "Rain Jiang <rain-jiang@outlook.com>"]
 categories = ["asynchronous", "cryptography", "network-programming"]
@@ -16,7 +16,7 @@ monoio-io-wrapper = { version = "0.1.0", path = "../monoio-io-wrapper" }
 rustls = { version = "0.21", default-features = false }
 
 bytes = { version = "1" }
-monoio = { version = "0.1.2", default-features = false }
+monoio = { version = "0.1.5", default-features = false }
 thiserror = { version = "1" }
 
 [features]
@@ -29,5 +29,5 @@ tls12 = ["rustls/tls12"]
 unsafe_io = ["monoio-io-wrapper/unsafe_io"]
 
 [dev-dependencies]
-monoio = { version = "0.1.2" }
+monoio = { version = "0.1.5" }
 webpki-roots = "0.23"

@@ -16,7 +16,7 @@ monoio-io-wrapper = { version = "0.1.0", path = "../monoio-io-wrapper" }
 native-tls = { version = "0.2" }
 
 bytes = { version = "1" }
-monoio = { version = "0.1.2", default-features = false }
+monoio = { version = "0.1.5", default-features = false }
 thiserror = { version = "1" }
 
 openssl-sys = { version = "0.9", optional = true }

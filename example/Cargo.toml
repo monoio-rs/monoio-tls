@@ -7,7 +7,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-monoio = { version = "0.1.2" }
+monoio = { version = "0.1.5" }
 
 # rustls
 rustls = { version = "0.21", features = ["tls12"] }
