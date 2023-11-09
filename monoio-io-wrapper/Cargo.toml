@@ -12,7 +12,7 @@ readme = "README.adoc"
 repository = "https://github.com/monoio-rs/monoio-tls"
 
 [dependencies]
-monoio = "0.1.5"
+monoio = { workspace = true }
 
 [features]
 default = []
