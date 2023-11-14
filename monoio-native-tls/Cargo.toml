@@ -1,6 +1,6 @@
 [package]
 name = "monoio-native-tls"
-version = "0.1.0"
+version = "0.3.0"
 
 authors = ["ChiHai <ihciah@gmail.com>", "Rain Jiang <rain-jiang@outlook.com>"]
 categories = ["asynchronous", "cryptography", "network-programming"]
@@ -12,12 +12,12 @@ readme = "README.md"
 repository = "https://github.com/monoio-rs/monoio-tls"
 
 [dependencies]
+monoio = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+
 monoio-io-wrapper = { version = "0.1.0", path = "../monoio-io-wrapper" }
 native-tls = { version = "0.2" }
-
-bytes = { version = "1" }
-monoio = { version = "0.1.5", default-features = false }
-thiserror = { version = "1" }
 
 openssl-sys = { version = "0.9", optional = true }
 tracing = { version = "0.1", optional = true }

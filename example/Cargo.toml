@@ -1,24 +1,22 @@
 [package]
 name = "monoio-tls-example"
-version = "0.1.0"
+version = "0.3.0"
 
 authors = ["ChiHai <ihciah@gmail.com>"]
 edition = "2021"
 publish = false
 
 [dependencies]
-monoio = { version = "0.1.5" }
+monoio = { workspace = true }
 
 # rustls
 rustls = { version = "0.21", features = ["tls12"] }
 rustls-pemfile = "1"
-monoio-rustls = { version = "0.1.2", path = "../monoio-rustls", features = [
-    "tls12",
-] }
+monoio-rustls = { path = "../monoio-rustls", features = ["tls12"] }
 
 # native-tls
 native-tls = { version = "0.2" }
-monoio-native-tls = { version = "0.1.0", path = "../monoio-native-tls" }
+monoio-native-tls = { path = "../monoio-native-tls" }
 
 [[bin]]
 name = "server-rustls"

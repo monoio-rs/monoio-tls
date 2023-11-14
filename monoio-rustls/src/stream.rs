@@ -1,5 +1,4 @@
 use std::{
-    future::Future,
     io::{self, Read, Write},
     ops::{Deref, DerefMut},
 };
@@ -206,29 +205,19 @@ impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData + 'static> AsyncReadRen
 where
     C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
 {
-    type ReadFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
-    where
-        T: IoBufMut + 'a, Self: 'a;
-
-    type ReadvFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
-    where
-        T: IoVecBufMut + 'a, Self: 'a;
-
-    fn read<T: IoBufMut>(&mut self, buf: T) -> Self::ReadFuture<'_, T> {
-        self.read_inner(buf, false)
+    async fn read<T: IoBufMut>(&mut self, buf: T) -> BufResult<usize, T> {
+        self.read_inner(buf, false).await
     }
 
-    fn readv<T: IoVecBufMut>(&mut self, mut buf: T) -> Self::ReadvFuture<'_, T> {
-        async move {
-            let n = match unsafe { RawBuf::new_from_iovec_mut(&mut buf) } {
-                Some(raw_buf) => self.read(raw_buf).await.0,
-                None => Ok(0),
-            };
-            if let Ok(n) = n {
-                unsafe { buf.set_init(n) };
-            }
-            (n, buf)
+    async fn readv<T: IoVecBufMut>(&mut self, mut buf: T) -> BufResult<usize, T> {
+        let n = match unsafe { RawBuf::new_from_iovec_mut(&mut buf) } {
+            Some(raw_buf) => self.read(raw_buf).await.0,
+            None => Ok(0),
+        };
+        if let Ok(n) = n {
+            unsafe { buf.set_init(n) };
         }
+        (n, buf)
     }
 }
 
@@ -236,82 +225,59 @@ impl<IO: AsyncReadRent + AsyncWriteRent, C, SD: SideData + 'static> AsyncWriteRe
 where
     C: DerefMut + Deref<Target = ConnectionCommon<SD>>,
 {
-    type WriteFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
-    where
-        T: IoBuf + 'a, Self: 'a;
+    async fn write<T: IoBuf>(&mut self, buf: T) -> BufResult<usize, T> {
+        // construct slice
+        let slice = unsafe { std::slice::from_raw_parts(buf.read_ptr(), buf.bytes_init()) };
 
-    type WritevFuture<'a, T> = impl Future<Output = BufResult<usize, T>> + 'a
-    where
-        T: IoVecBuf + 'a, Self: 'a;
-
-    type FlushFuture<'a> = impl Future<Output = io::Result<()>> + 'a
-    where
-        Self: 'a;
-
-    type ShutdownFuture<'a> = impl Future<Output = io::Result<()>> + 'a
-    where
-        Self: 'a;
-
-    fn write<T: IoBuf>(&mut self, buf: T) -> Self::WriteFuture<'_, T> {
-        async move {
-            // construct slice
-            let slice = unsafe { std::slice::from_raw_parts(buf.read_ptr(), buf.bytes_init()) };
-
-            // flush rustls inner write buffer to make sure there is space for new data
-            if self.session.wants_write() {
-                if let Err(e) = self.write_io().await {
-                    return (Err(e), buf);
-                }
+        // flush rustls inner write buffer to make sure there is space for new data
+        if self.session.wants_write() {
+            if let Err(e) = self.write_io().await {
+                return (Err(e), buf);
             }
-
-            // write slice to rustls
-            let n = match self.session.writer().write(slice) {
-                Ok(n) => n,
-                Err(e) => return (Err(e), buf),
-            };
-
-            // write from rustls to connection
-            while self.session.wants_write() {
-                match self.write_io().await {
-                    Ok(0) => {
-                        break;
-                    }
-                    Ok(_) => (),
-                    Err(e) => return (Err(e), buf),
-                }
-            }
-            (Ok(n), buf)
         }
+
+        // write slice to rustls
+        let n = match self.session.writer().write(slice) {
+            Ok(n) => n,
+            Err(e) => return (Err(e), buf),
+        };
+
+        // write from rustls to connection
+        while self.session.wants_write() {
+            match self.write_io().await {
+                Ok(0) => {
+                    break;
+                }
+                Ok(_) => (),
+                Err(e) => return (Err(e), buf),
+            }
+        }
+        (Ok(n), buf)
     }
 
     // TODO: use real writev
-    fn writev<T: IoVecBuf>(&mut self, buf_vec: T) -> Self::WritevFuture<'_, T> {
-        async move {
-            let n = match unsafe { RawBuf::new_from_iovec(&buf_vec) } {
-                Some(raw_buf) => self.write(raw_buf).await.0,
-                None => Ok(0),
-            };
-            (n, buf_vec)
-        }
+    async fn writev<T: IoVecBuf>(&mut self, buf_vec: T) -> BufResult<usize, T> {
+        let n = match unsafe { RawBuf::new_from_iovec(&buf_vec) } {
+            Some(raw_buf) => self.write(raw_buf).await.0,
+            None => Ok(0),
+        };
+        (n, buf_vec)
     }
 
-    fn flush(&mut self) -> Self::FlushFuture<'_> {
-        async move {
-            self.session.writer().flush()?;
-            while self.session.wants_write() {
-                self.write_io().await?;
-            }
-            self.io.flush().await
+    async fn flush(&mut self) -> io::Result<()> {
+        self.session.writer().flush()?;
+        while self.session.wants_write() {
+            self.write_io().await?;
         }
+        self.io.flush().await
     }
 
-    fn shutdown(&mut self) -> Self::ShutdownFuture<'_> {
+    async fn shutdown(&mut self) -> io::Result<()> {
         self.session.send_close_notify();
-        async move {
-            while self.session.wants_write() {
-                self.write_io().await?;
-            }
-            self.io.shutdown().await
+
+        while self.session.wants_write() {
+            self.write_io().await?;
         }
+        self.io.shutdown().await
     }
 }
