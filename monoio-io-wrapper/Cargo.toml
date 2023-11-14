@@ -1,6 +1,6 @@
 [package]
 name = "monoio-io-wrapper"
-version = "0.1.0"
+version = "0.1.1"
 
 authors = ["ChiHai <ihciah@gmail.com>", "Rain Jiang <rain-jiang@outlook.com>"]
 categories = ["asynchronous", "network-programming"]

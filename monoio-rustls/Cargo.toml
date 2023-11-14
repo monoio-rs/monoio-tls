@@ -16,7 +16,7 @@ monoio = { workspace = true }
 bytes = { workspace = true }
 thiserror = { workspace = true }
 
-monoio-io-wrapper = { version = "0.1.0", path = "../monoio-io-wrapper" }
+monoio-io-wrapper = { version = "0.1.1", path = "../monoio-io-wrapper" }
 rustls = { version = "0.21", default-features = false }
 
 [features]

@@ -16,7 +16,7 @@ monoio = { workspace = true }
 bytes = { workspace = true }
 thiserror = { workspace = true }
 
-monoio-io-wrapper = { version = "0.1.0", path = "../monoio-io-wrapper" }
+monoio-io-wrapper = { version = "0.1.1", path = "../monoio-io-wrapper" }
 native-tls = { version = "0.2" }
 
 openssl-sys = { version = "0.9", optional = true }
