@@ -7,14 +7,14 @@ use monoio::{
     net::{TcpListener, TcpStream},
 };
 use monoio_rustls::TlsAcceptor;
-use rustls::{Certificate, PrivateKey, ServerConfig};
+use rustls::{ServerConfig};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls_pemfile::{certs, rsa_private_keys};
 
 #[monoio::main]
 async fn main() {
     let (chain, key) = read_server_certs();
     let config = ServerConfig::builder()
-        .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(chain, key)
         .expect("invalid cert chain or key");
@@ -66,18 +66,18 @@ async fn process_raw_stream(stream: TcpStream, tls_acceptor: TlsAcceptor) -> io:
     Ok(())
 }
 
-fn read_server_certs() -> (Vec<Certificate>, PrivateKey) {
+fn read_server_certs() -> (Vec<CertificateDer<'static>>, PrivateKeyDer<'static>) {
     let mut ca_cursor = Cursor::new(include_bytes!("../certs/rootCA.crt"));
-    let ca_data = certs(&mut ca_cursor).unwrap().pop().unwrap();
-    let ca = Certificate(ca_data);
+    let ca_data = certs(&mut ca_cursor).into_iter().next().unwrap().unwrap();
+    let ca = CertificateDer::from(ca_data);
 
     let mut crt_cursor = Cursor::new(include_bytes!("../certs/server.crt"));
-    let crt_data = certs(&mut crt_cursor).unwrap().pop().unwrap();
-    let crt = Certificate(crt_data);
+    let crt_data = certs(&mut crt_cursor).into_iter().next().unwrap().unwrap();
+    let crt = CertificateDer::from(crt_data);
 
     let mut key_cursor = Cursor::new(include_bytes!("../certs/server.key"));
-    let key_data = rsa_private_keys(&mut key_cursor).unwrap().pop().unwrap();
-    let key = PrivateKey(key_data);
+    let key_data = rsa_private_keys(&mut key_cursor).into_iter().next().unwrap().unwrap();
+    let key = PrivateKeyDer::from(key_data);
 
     let chain = vec![crt, ca];
     (chain, key)

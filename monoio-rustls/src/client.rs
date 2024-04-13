@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use monoio::io::{AsyncReadRent, AsyncWriteRent, OwnedReadHalf, OwnedWriteHalf};
-use rustls::{ClientConfig, ClientConnection};
+use rustls::{pki_types::ServerName, ClientConfig, ClientConnection};
 
 use crate::{stream::Stream, TlsError};
 
@@ -55,7 +55,7 @@ impl TlsConnector {
 
     pub async fn connect<IO>(
         &self,
-        domain: rustls::ServerName,
+        domain: ServerName<'static>,
         stream: IO,
     ) -> Result<TlsStream<IO>, TlsError>
     where

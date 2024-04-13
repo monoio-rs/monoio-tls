@@ -5,20 +5,13 @@ use monoio::{
     net::TcpStream,
 };
 use monoio_rustls::TlsConnector;
-use rustls::{OwnedTrustAnchor, RootCertStore};
+use rustls::{RootCertStore};
 
 #[monoio::main]
 async fn main() {
     let mut root_store = RootCertStore::empty();
-    root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
-        OwnedTrustAnchor::from_subject_spki_name_constraints(
-            ta.subject,
-            ta.spki,
-            ta.name_constraints,
-        )
-    }));
+    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     let config = rustls::ClientConfig::builder()
-        .with_safe_defaults()
         .with_root_certificates(root_store)
         .with_no_client_auth();
 
@@ -26,7 +19,7 @@ async fn main() {
     let stream = TcpStream::connect("rsproxy.cn:443").await.unwrap();
     println!("rsproxy.cn:443 connected");
 
-    let domain = rustls::ServerName::try_from("rsproxy.cn").unwrap();
+    let domain = rustls::pki_types::ServerName::try_from("rsproxy.cn").unwrap();
     let mut stream = connector.connect(domain, stream).await.unwrap();
     println!("handshake success");
 

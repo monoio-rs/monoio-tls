@@ -10,8 +10,8 @@ publish = false
 monoio = { workspace = true }
 
 # rustls
-rustls = { version = "0.21", features = ["tls12"] }
-rustls-pemfile = "1"
+rustls = { version = "~0.23.4", features = ["tls12"] }
+rustls-pemfile = "^2.1.2"
 monoio-rustls = { path = "../monoio-rustls", features = ["tls12"] }
 
 # native-tls
