@@ -32,6 +32,11 @@ impl<S> TlsStream<S> {
     pub fn into_inner(self) -> S {
         self.io.into_parts().0
     }
+
+    #[cfg(feature = "alpn")]
+    pub fn alpn_protocol(&self) -> Option<Vec<u8>> {
+        self.tls.negotiated_alpn().ok().flatten()
+    }
 }
 
 unsafe impl<S: Split> Split for TlsStream<S> {}

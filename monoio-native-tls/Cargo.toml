@@ -1,6 +1,6 @@
 [package]
 name = "monoio-native-tls"
-version = "0.3.0"
+version = "0.4.0"
 
 authors = ["ChiHai <ihciah@gmail.com>", "Rain Jiang <rain-jiang@outlook.com>"]
 categories = ["asynchronous", "cryptography", "network-programming"]
