@@ -9,7 +9,7 @@ use monoio::{
     BufResult,
 };
 use monoio_io_wrapper::{ReadBuffer, WriteBuffer};
-use rustls::{ConnectionCommon, ServerConnection, SideData};
+use rustls::{ClientConnection, ConnectionCommon, ServerConnection, SideData};
 
 #[derive(Debug)]
 pub struct Stream<IO, C> {
@@ -21,8 +21,15 @@ pub struct Stream<IO, C> {
 
 impl<IO> Stream<IO, ServerConnection> {
     #[inline]
-    pub fn alpn_protocol(&self) -> Option<&[u8]> {
-        self.session.alpn_protocol()
+    pub fn alpn_protocol(&self) -> Option<Vec<u8>> {
+        self.session.alpn_protocol().map(|s| s.to_vec())
+    }
+}
+
+impl<IO> Stream<IO, ClientConnection> {
+    #[inline]
+    pub fn alpn_protocol(&self) -> Option<Vec<u8>> {
+        self.session.alpn_protocol().map(|s| s.to_vec())
     }
 }
 
