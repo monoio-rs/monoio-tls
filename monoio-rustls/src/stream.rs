@@ -63,6 +63,25 @@ impl<IO, C> Stream<IO, C> {
         (self.io, self.session)
     }
 
+    /// Returns shared references to the underlying IO and TLS session.
+    ///
+    /// Mirrors `tokio-rustls`'s accessor of the same name. Useful for
+    /// reading post-handshake session state — server name, negotiated
+    /// protocol version and cipher suite, peer certificates, etc. —
+    /// without consuming the stream.
+    #[inline]
+    pub fn get_ref(&self) -> (&IO, &C) {
+        (&self.io, &self.session)
+    }
+
+    /// Returns mutable references to the underlying IO and TLS session.
+    ///
+    /// Mirrors `tokio-rustls`'s accessor of the same name.
+    #[inline]
+    pub fn get_mut(&mut self) -> (&mut IO, &mut C) {
+        (&mut self.io, &mut self.session)
+    }
+
     pub(crate) fn map_conn<C2, F: FnOnce(C) -> C2>(self, f: F) -> Stream<IO, C2> {
         Stream {
             io: self.io,
